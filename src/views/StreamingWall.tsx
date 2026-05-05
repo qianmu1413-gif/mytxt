@@ -3,14 +3,21 @@ import { Search, Monitor, Play, Square, LayoutGrid, CheckSquare, Expand, Refresh
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 
-const MOCK_DEVICES = Array.from({ length: 32 }).map((_, i) => ({
-  id: `dev-${String(i+1).padStart(3, '0')}`,
-  name: `群控设备-${String(i+1).padStart(2, '0')}`,
-  status: i % 4 === 0 ? 'idle' : 'streaming',
-  ip: `192.168.1.${100 + i}`,
-  account: i % 2 === 0 ? `xhs_user_${i}` : '未分配',
-  screen: i % 4 !== 0 
-}));
+const MOCK_DEVICES = Array.from({ length: 64 }).map((_, i) => {
+  let status: 'running' | 'backup' | 'empty' = 'running';
+  if (i % 7 === 3) status = 'backup';
+  else if (i % 5 === 4) status = 'empty';
+
+  return {
+    id: `dev-${String(i+1).padStart(3, '0')}`,
+    name: `xhs-reg-${String(i+1).padStart(2, '0')}`,
+    status,
+    ip: `192.168.2.${100 + i}`,
+    account: i % 2 === 0 ? `xhs_user_${i}` : '未分配',
+    backups: Math.floor(Math.random() * 15) + 1,
+    screen: status === 'running' 
+  };
+});
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -26,18 +33,18 @@ const itemVariants = {
 };
 
 const LAYOUT_OPTIONS = [
-  { id: 'layout-4', label: '4屏 (2x2)', cols: 2, rows: 2 },
-  { id: 'layout-6', label: '6屏 (3x2)', cols: 3, rows: 2 },
+  { id: 'layout-4', label: '4屏 (4x1)', cols: 4, rows: 1 },
   { id: 'layout-8', label: '8屏 (4x2)', cols: 4, rows: 2 },
-  { id: 'layout-14', label: '14屏 (7x2)', cols: 7, rows: 2 },
+  { id: 'layout-12', label: '12屏 (4x3)', cols: 4, rows: 3 },
+  { id: 'layout-16', label: '16屏 (8x2)', cols: 8, rows: 2 },
   { id: 'layout-32', label: '32屏 (8x4)', cols: 8, rows: 4 },
 ];
 
 export default function StreamingWall() {
   const [selected, setSelected] = useState<string[]>([]);
   const [activeDevice, setActiveDevice] = useState<typeof MOCK_DEVICES[0] | null>(null);
-  const [layoutMode, setLayoutMode] = useState<string>('layout-6'); // Default to 6屏
-  const [customCols, setCustomCols] = useState<number>(3);
+  const [layoutMode, setLayoutMode] = useState<string>('layout-8'); // Default to 8屏 (4x2)
+  const [customCols, setCustomCols] = useState<number>(4);
   const [customRows, setCustomRows] = useState<number>(2);
   const [page, setPage] = useState<number>(0);
   const [searchTerm, setSearchTerm] = useState<string>('');
@@ -159,114 +166,141 @@ export default function StreamingWall() {
       </div>
 
       {/* Grid */}
-      <div className="flex-1 min-h-0 relative bg-slate-900 flex items-center justify-center rounded-xl overflow-hidden border border-slate-800 shadow-inner">
+      <div className="flex-1 min-h-0 relative bg-slate-100 flex items-start overflow-y-auto rounded-xl border border-slate-200 shadow-inner p-4">
         <motion.div 
-          className="grid w-full h-full p-1"
+          className="grid w-full gap-4 pb-8 auto-rows-max"
           style={{ 
-            gap: currentLayout.cols > 4 ? '4px' : '8px',
             gridTemplateColumns: `repeat(${currentLayout.cols}, minmax(0, 1fr))`,
-            gridTemplateRows: `repeat(${currentLayout.rows}, minmax(0, 1fr))`
           }}
           variants={containerVariants}
           initial="hidden"
           animate="visible"
           key={layoutMode + '-' + currentLayout.cols + '-' + currentLayout.rows + '-' + page} // Formats grid animation on change
         >
-          {displayedDevices.map(device => (
+          {displayedDevices.map((device, index) => (
             <motion.div 
               variants={itemVariants}
               key={device.id} 
-              className="relative group transition-all flex items-center justify-center bg-black rounded-lg overflow-hidden border border-slate-700/50"
-              style={{ containerType: 'size' }}
+              className={cn(
+                "relative flex flex-col bg-white rounded-xl overflow-hidden border transition-all shadow-sm",
+                selected.includes(device.id) ? "border-blue-500 ring-1 ring-blue-500 z-10" : "border-slate-200 hover:border-slate-300 hover:shadow-md z-0"
+              )}
             >
+              {/* Top Bar */}
+              <div className="flex px-3 py-2.5 items-center justify-between border-b border-slate-100 bg-white shrink-0">
+                <div className="flex items-center gap-2 overflow-hidden">
+                  <div 
+                    className="relative flex items-center justify-center cursor-pointer"
+                    onClick={(e) => { e.stopPropagation(); toggleSelect(device.id); }}
+                  >
+                    <input 
+                      type="checkbox" 
+                      onChange={() => {}} // Controlled via parent onClick
+                      checked={selected.includes(device.id)}
+                      className="w-4 h-4 rounded text-indigo-600 border-slate-300 focus:ring-indigo-500 cursor-pointer pointer-events-none transition-colors"
+                    />
+                  </div>
+                  <span className="text-indigo-600 font-bold text-[11px] bg-indigo-50 border border-indigo-100 px-2 py-0.5 rounded-md leading-none">{(page * pageSize) + index + 1}</span>
+                  {device.status !== 'empty' && (
+                    <span className="text-sm font-bold text-slate-700 truncate leading-none tracking-tight" title={device.name}>
+                      {device.name}
+                    </span>
+                  )}
+                </div>
+                
+                {/* Status Badge */}
+                {device.status === 'running' && (
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-md text-emerald-600 bg-emerald-50 shrink-0 leading-none shadow-sm shadow-emerald-100/50">
+                    已运行
+                  </span>
+                )}
+                {device.status === 'backup' && (
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-md text-amber-600 bg-amber-50 shrink-0 leading-none shadow-sm shadow-amber-100/50">
+                    {device.backups} 备份
+                  </span>
+                )}
+                {device.status === 'empty' && (
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-md text-slate-500 bg-slate-100 shrink-0 leading-none">
+                    空闲
+                  </span>
+                )}
+              </div>
+
+              {/* Screen Area Wrapper */}
+              <div className="w-full bg-slate-50/50 p-3 pt-4 pb-3 flex flex-col items-center justify-center">
                 <div 
                   className={cn(
-                    "relative overflow-hidden transition-all duration-300 w-full h-full flex flex-col",
-                    selected.includes(device.id) ? "ring-2 ring-blue-500 z-10" : "z-0"
-                  )}
+                    "w-full relative flex flex-col items-center justify-center overflow-hidden rounded-[1rem] transition-all",
+                    device.status === 'running' ? "shadow-[0_0_0_4px_#1e293b,0_4px_20px_rgba(0,0,0,0.1)]" : "shadow-[0_0_0_2px_#e2e8f0]",
+                    device.status === 'empty' && "border-2 border-dashed border-slate-300 shadow-none bg-slate-100/50"
+                  )} 
+                  style={{ aspectRatio: '9/16' }}
                 >
-                 {device.screen ? (
-                    <div className="w-full h-full relative">
-                       {/* Background color for mobile screen placeholder */}
-                       <div className="absolute inset-0 bg-slate-50 flex flex-col">
-                          {/* Top Bar Minimal */}
-                          <div className="w-full h-[6%] min-h-[20px] flex items-end justify-between px-2 pb-1 bg-white z-10 shrink-0 border-b border-slate-200">
-                             <div className="w-[30%] h-[40%] bg-slate-200 rounded-full"></div>
-                             <div className="w-[15%] h-[40%] bg-slate-200 rounded-full"></div>
-                          </div>
-                          {/* App Content */}
-                          <div className="flex-1 p-[2cqw] flex gap-[2cqw] bg-slate-100 overflow-hidden">
-                             {/* Left Column */}
-                             <div className="flex-1 flex flex-col gap-[2cqw]">
-                                <div className="w-full h-[60%] bg-white rounded-md border border-slate-200/60 shadow-sm relative overflow-hidden">
-                                </div>
-                                <div className="w-full flex-1 bg-white rounded-md border border-slate-200/60 shadow-sm relative overflow-hidden">
-                                </div>
-                             </div>
-                             {/* Right Column */}
-                             <div className="flex-1 flex flex-col gap-[2cqw]">
-                                <div className="w-full h-[45%] bg-white rounded-md border border-slate-200/60 shadow-sm relative overflow-hidden">
-                                </div>
-                                <div className="w-full flex-1 bg-white rounded-md border border-slate-200/60 shadow-sm relative overflow-hidden">
-                                </div>
-                             </div>
-                          </div>
-                          {/* Bottom Tab Bar Minimal */}
-                          <div className="w-full h-[8%] min-h-[30px] border-t border-slate-200 bg-white flex justify-around items-center shrink-0">
-                            <div className="w-[12%] aspect-square rounded-full bg-slate-800"></div>
-                            <div className="w-[12%] aspect-square rounded-full bg-slate-200"></div>
-                            <div className="w-[15%] aspect-[1.2] rounded-[4px] bg-rose-500 shadow-sm"></div>
-                            <div className="w-[12%] aspect-square rounded-full bg-slate-200"></div>
-                            <div className="w-[12%] aspect-square rounded-full bg-slate-200"></div>
+                  {device.status === 'running' ? (
+                    <div className="w-full h-full relative cursor-pointer group/screen flex flex-col" onClick={() => setActiveDevice(device)}>
+                       {/* Background Gradient */}
+                       <div className="absolute inset-0 bg-gradient-to-b from-indigo-900 via-slate-900 to-slate-900"></div>
+                       
+                       {/* Status Bar */}
+                       <div className="relative z-10 w-full px-4 py-3 flex justify-between items-center text-white/90 text-[10px] font-medium shrink-0">
+                          <span>12:00</span>
+                          {/* Notch Fake */}
+                          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-1/3 h-4 bg-[#1e293b] rounded-b-xl z-20"></div>
+                          <div className="flex gap-1.5 items-center">
+                             <span>5G</span>
+                             <span className="w-3 h-2 rounded-[2px] bg-white/90"></span>
                           </div>
                        </div>
+
+                       {/* Content Overlay Fake */}
+                       <div className="relative z-10 flex-1 w-full px-3 flex flex-col items-center justify-center pt-8">
+                         <div className="w-16 h-16 rounded-3xl bg-white/10 border border-white/20 shadow-2xl backdrop-blur-xl flex items-center justify-center mb-4 group-hover/screen:scale-105 transition-transform duration-500">
+                           <div className="w-7 h-7 border-2 border-white rounded-xl opacity-90"></div>
+                         </div>
+                         <div className="text-xs font-bold text-white tracking-wide shadow-sm">矩阵自动化正在运行</div>
+                         <div className="mt-2 flex items-center gap-1.5 opacity-70 bg-black/20 px-3 py-1 rounded-full">
+                           <UserCircle className="w-3.5 h-3.5 text-white" />
+                           <span className="text-[10px] font-medium text-white tracking-wider">{device.account}</span>
+                         </div>
+                       </div>
+
+                       {/* Dock */}
+                       <div className="relative z-10 w-[85%] mx-auto mb-4 py-2 px-3 bg-white/10 backdrop-blur-xl rounded-3xl flex justify-between items-center border border-white/10 shadow-lg shrink-0">
+                          <div className="w-6 h-6 rounded-xl bg-emerald-500 shadow-md flex items-center justify-center"><div className="w-3 h-3 bg-white rounded-sm"></div></div>
+                          <div className="w-6 h-6 rounded-xl bg-rose-500 shadow-md flex items-center justify-center"><div className="w-3 h-3 border-2 border-white rounded-full"></div></div>
+                          <div className="w-6 h-6 rounded-xl bg-blue-500 shadow-md flex items-center justify-center"><div className="w-3 h-2 bg-white rounded-[2px]"></div></div>
+                          <div className="w-6 h-6 rounded-xl bg-amber-500 shadow-md flex items-center justify-center"><div className="w-3 h-3 border-2 border-white rounded-sm"></div></div>
+                       </div>
+                       
+                       {/* Hover Overlay */}
+                       <div className="absolute inset-0 bg-indigo-900/40 backdrop-blur-[2px] opacity-0 group-hover/screen:opacity-100 transition-opacity duration-300 z-30 flex items-center justify-center">
+                         <div className="bg-white text-indigo-600 rounded-full p-4 shadow-2xl transform scale-90 group-hover/screen:scale-100 transition-all duration-500">
+                           <Expand className="w-5 h-5" />
+                         </div>
+                       </div>
                     </div>
-                 ) : (
-                    <div className="w-full h-full flex flex-col items-center justify-center bg-slate-900">
-                       <Monitor className="w-[15cqw] h-[15cqw] text-slate-700/50 mb-[2cqw]" />
-                       <span className="text-[5cqw] font-bold tracking-widest text-slate-600/80">No Signal</span>
+                  ) : device.status === 'backup' ? (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 bg-slate-100 w-full relative">
+                      <div className="absolute inset-0 bg-gradient-to-br from-slate-50 to-slate-100 opacity-50"></div>
+                      <div className="relative z-10 flex flex-col items-center">
+                        <div className="w-12 h-12 rounded-full bg-slate-200/50 flex items-center justify-center mb-3">
+                          <Monitor className="w-5 h-5 text-slate-400" />
+                        </div>
+                        <span className="text-sm font-bold text-slate-600 mb-1">已关机</span>
+                        <span className="text-[11px] font-medium text-indigo-500 cursor-pointer hover:text-indigo-600 bg-indigo-50 px-3 py-1 rounded-full mt-2 transition-colors">点击切换备份</span>
+                      </div>
                     </div>
-                 )}
-
-                 {/* Top Overlay: Device ID & Checkbox */}
-                 <div className="absolute top-0 inset-x-0 bg-gradient-to-b from-black/80 via-black/40 to-transparent p-2 pb-6 flex justify-between items-start z-20 pointer-events-none">
-                    <span className="text-[min(4cqw,12px)] leading-none text-white/95 font-mono bg-black/60 px-1.5 py-1 rounded-[4px] border border-white/20 backdrop-blur-md shadow-sm flex items-center gap-1.5 origin-top-left">
-                       {device.status === 'streaming' && <span className="w-1.5 h-1.5 flex-shrink-0 rounded-full bg-emerald-500 shadow-[0_0_8px_#10b981]"></span>}
-                       {device.id}
-                    </span>
-                 </div>
-
-                 {/* Checkbox (interactive) */}
-                 <button 
-                  onClick={(e) => { e.stopPropagation(); toggleSelect(device.id); }} 
-                  className="absolute top-2 right-2 z-30 opacity-60 group-hover:opacity-100 transition-opacity"
-                 >
-                    <div className={cn(
-                      "w-[min(6cqw,20px)] h-[min(6cqw,20px)] rounded-[3px] border flex items-center justify-center transition-colors shadow-sm",
-                      selected.includes(device.id) ? "bg-blue-500 border-blue-500 text-white" : "bg-black/60 border-white/50 text-transparent hover:bg-black/80"
-                    )}>
-                      {selected.includes(device.id) && <CheckSquare className="w-3 h-3" strokeWidth={3} />}
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 w-full">
+                      <div className="w-12 h-12 rounded-full border-2 border-dashed border-slate-300 flex items-center justify-center mb-3">
+                        <span className="text-slate-300 flex items-center justify-center">+</span>
+                      </div>
+                      <span className="text-[11px] font-medium tracking-wide text-slate-500">空闲坑位</span>
+                      <span className="text-[10px] font-mono mt-2 bg-white border border-slate-200 shadow-sm px-2 py-0.5 rounded text-slate-400">{device.ip}</span>
                     </div>
-                 </button>
-
-                 {/* Bottom Overlay: Metadata */}
-                 <div className="absolute bottom-0 inset-x-0 bg-gradient-to-t from-black/90 via-black/70 to-transparent p-2 pt-6 flex flex-col z-20 pointer-events-none border-t border-white/10">
-                    <span className="text-[min(5cqw,14px)] leading-tight text-white font-bold truncate tracking-wide">{device.name}</span>
-                    <span className="text-[min(4cqw,11px)] text-slate-300 truncate mt-0.5 flex items-center gap-1">
-                      <UserCircle className="w-3 h-3" /> {device.account}
-                    </span>
-                 </div>
-
-                 {/* Hover Action Zone */}
-                 <div 
-                   className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity z-20 flex items-center justify-center cursor-pointer"
-                   onClick={() => setActiveDevice(device)}
-                 >
-                    <button className="bg-blue-600 hover:bg-blue-500 text-white rounded-full p-3 shadow-lg transform scale-90 group-hover:scale-100 transition-all duration-300">
-                       <Expand className="w-5 h-5" />
-                    </button>
-                 </div>
+                  )}
                 </div>
+              </div>
             </motion.div>
           ))}
         </motion.div>
